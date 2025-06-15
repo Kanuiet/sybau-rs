@@ -57,7 +57,7 @@ fn is_unary_neg(tokens: &[String], buffer: &str) -> bool {
         return true;
     }
 
-    return is_op_or_paren(tokens.last().unwrap());
+    is_op_or_paren(tokens.last().unwrap())
 }
 
 fn should_push_buffer(tokens: &[String], buffer: &str) -> bool {
@@ -65,7 +65,7 @@ fn should_push_buffer(tokens: &[String], buffer: &str) -> bool {
         return false;
     }
 
-    return !buffer.is_empty();
+    !buffer.is_empty()
 }
 
 fn tokenize(problem: &str) -> Vec<String> {
@@ -76,6 +76,9 @@ fn tokenize(problem: &str) -> Vec<String> {
     for char in chars {
         match char {
             '0'..='9' => {
+                // Push and clear buffer if buffer is not empty (contains operators)
+                // and not a unary neg.
+                // Otherwise, if the buffer is empty or the last token is op or paren and buffer is a `-`. Skip this.
                 if should_push_buffer(&tokens, &buffer) && !is_str_digit(&buffer) {
                     tokens.push(buffer.clone());
                     buffer.clear();
@@ -84,17 +87,21 @@ fn tokenize(problem: &str) -> Vec<String> {
                 buffer.push(char);
             }
             '+' | '-' | '*' | '/' | '^' | '(' | ')' => {
+                // 5(2+2) -> 5 * (2+2)
                 if char == '(' && (is_str_digit(&buffer) || buffer == ")") {
                     tokens.push(buffer.clone());
                     buffer.clear();
                     buffer.push('*');
                 }
 
+                // Same
                 if should_push_buffer(&tokens, &buffer) {
                     tokens.push(buffer.clone());
                     buffer.clear();
                 }
 
+                // Change buffer `-` to NEG
+                // -(2+2) -> NEG(2+2) || --4 -> NEG(-4)
                 if (char == '(' || char == '-') && buffer == "-" {
                     tokens.push("NEG".to_string());
                     buffer.clear();
@@ -102,14 +109,12 @@ fn tokenize(problem: &str) -> Vec<String> {
 
                 buffer.push(char);
             }
+            // For float number
             '.' => {
                 buffer.push(char);
             }
             _ => {}
         }
-        // dbg!(&tokens);
-        // dbg!(&buffer);
-        // dbg!(&char);
     }
 
     // Push a remaining buffer
@@ -129,9 +134,7 @@ fn get_input(query: &str) -> String {
         .read_line(&mut input)
         .expect("Failed to read user input.");
 
-    let input = input.trim().to_string();
-
-    input
+    input.trim().to_string()
 }
 
 fn to_postfix(tokens: Vec<String>) -> Vec<String> {
@@ -183,10 +186,17 @@ fn is_lt_eq_precedence(op: &str, other_op: &str) -> bool {
         return false;
     }
 
+    // ignore `(` or `)`. Only for op
     if op == "(" || op == ")" {
         return false;
     }
 
+    // ignore `NEG`
+    if op == "NEG" && other_op == "NEG" {
+        return false;
+    }
+
+    // ignore `^`
     if op == "^" && other_op == "^" {
         return false;
     }
@@ -226,7 +236,7 @@ fn evaluate(expr: &str) -> Result<f64, CalculatorError> {
     let postfix = to_postfix(tokens);
     let mut result: Vec<f64> = Vec::new();
     dbg!(&postfix);
-    
+
     if postfix.iter().any(|t| t == "(") {
         return Err(CalculatorError::UnmatchedParentheses);
     }

@@ -30,6 +30,12 @@ mod tests {
     }
 
     #[test]
+    fn test_unary_neg() {
+        assert_eq!(evaluate("----10"), Ok(10.0));
+        assert_eq!(evaluate("-(-(-(-(10))))"), Ok(10.0));
+    }
+
+    #[test]
     fn test_mixed_operators() {
         assert_eq!(evaluate("5(3/2)^2 * 6(10) / 2^2"), Ok(168.75));
         assert_eq!(evaluate("3 ^ 6 - (1.5 * 6 / 2 + 1) + 5 / 2 + 1"), Ok(727.0));
