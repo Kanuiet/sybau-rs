@@ -1,4 +1,6 @@
 use std::{
+    error::Error,
+    fmt,
     io::{self, Write},
     ops::Neg,
     str,
@@ -7,7 +9,26 @@ use std::{
 #[cfg(test)]
 mod test;
 
-enum CalculatorError {} 
+#[derive(Debug, PartialEq)]
+enum CalculatorError {
+    InvalidExpression,
+    InvalidNumber(String),
+    EmptyExpression,
+    UnmatchedParentheses,
+}
+
+impl fmt::Display for CalculatorError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CalculatorError::InvalidExpression => write!(f, "invalid expression"),
+            CalculatorError::InvalidNumber(s) => write!(f, "invalid number: ({s})"),
+            CalculatorError::EmptyExpression => write!(f, "empty expression"),
+            CalculatorError::UnmatchedParentheses => write!(f, "unmatched parentheses"),
+        }
+    }
+}
+
+impl Error for CalculatorError {}
 
 fn is_str_digit(string: &str) -> bool {
     string.chars().any(|c| c.is_ascii_digit())
@@ -118,34 +139,37 @@ fn to_postfix(tokens: Vec<String>) -> Vec<String> {
     let mut op_stack: Vec<String> = Vec::new();
 
     for token in tokens {
-        if !is_str_digit(&token) {
-            let mut op = op_stack.pop().unwrap_or("null".to_string());
-
-            while compare_precedence(&token, &op) {
-                output.push(op);
-
-                op = op_stack.pop().unwrap_or("null".to_string());
-            }
-
-            if &op != "null" {
-                op_stack.push(op);
-            }
-
-            if &token == ")" {
-                while let Some(op) = op_stack.pop() {
-                    ////dbg!(&op);
-                    if op == "(" {
-                        break;
-                    }
-
-                    output.push(op);
-                }
-            } else {
-                op_stack.push(token);
-            }
-        } else {
+        // Push the number to the output
+        if is_str_digit(&token) {
             output.push(token);
+            continue;
         }
+
+        // Push the op from op_stack to the output if the current token has lower or equal precedence
+        while let Some(op) = op_stack.pop() {
+            if !is_lt_eq_precedence(&token, &op) {
+                // Push back op
+                op_stack.push(op);
+                break;
+            }
+
+            output.push(op);
+        }
+
+        // Push the op from op_stack to the output until it found "(".
+        if &token == ")" {
+            while let Some(op) = op_stack.pop() {
+                if op == "(" {
+                    break;
+                }
+
+                output.push(op);
+            }
+
+            continue;
+        }
+
+        op_stack.push(token);
     }
 
     // Push remainings operator
@@ -154,7 +178,7 @@ fn to_postfix(tokens: Vec<String>) -> Vec<String> {
     output
 }
 
-fn compare_precedence(op: &str, other_op: &str) -> bool {
+fn is_lt_eq_precedence(op: &str, other_op: &str) -> bool {
     if !is_op_or_paren(op) || !is_op_or_paren(other_op) {
         return false;
     }
@@ -191,9 +215,9 @@ fn apply_operator(lhs: f64, rhs: f64, op: String) -> f64 {
     }
 }
 
-fn evaluate(expr: &str) -> Result<f64, String> {
+fn evaluate(expr: &str) -> Result<f64, CalculatorError> {
     if expr.is_empty() {
-        return Err("Empty expression".to_string());
+        return Err(CalculatorError::EmptyExpression);
     }
 
     dbg!(&expr);
@@ -202,39 +226,46 @@ fn evaluate(expr: &str) -> Result<f64, String> {
     let postfix = to_postfix(tokens);
     let mut result: Vec<f64> = Vec::new();
     dbg!(&postfix);
+    
+    if postfix.iter().any(|t| t == "(") {
+        return Err(CalculatorError::UnmatchedParentheses);
+    }
 
     for unit in postfix {
-        if &unit == "NEG" {
+        if unit == "NEG" {
             let num = result.pop().unwrap().neg();
             result.push(num);
-        } else if !is_str_digit(&unit) {
+            continue;
+        }
+
+        if !is_str_digit(&unit) {
             let rhs = result.pop().unwrap();
             let lhs = result.pop().unwrap();
             let res = apply_operator(lhs, rhs, unit);
 
             result.push(res);
-        } else {
-            let parse = match unit.parse::<f64>() {
-                Ok(val) => val,
-                Err(err) => return Err(err.to_string()),
-            };
-            result.push(parse);
+            continue;
         }
+
+        let val = unit
+            .parse::<f64>()
+            .map_err(|_| CalculatorError::InvalidNumber(unit))?;
+        result.push(val);
     }
 
     if result.is_empty() {
-        return Err("Invalid infix".to_string());
+        return Err(CalculatorError::InvalidExpression);
     }
 
     Ok(result[0])
 }
 
-fn main() -> Result<(), String> {
+fn main() {
     loop {
         let input = get_input("sybau-rs> ").to_lowercase();
 
         if input == "q" || input == "quit" {
-            return Ok(());
+            return;
         }
 
         let res = evaluate(&input);
@@ -244,9 +275,4 @@ fn main() -> Result<(), String> {
             Err(err) => println!("Error: {err}"),
         }
     }
-
-    // let problem1 = "2+4";
-    // let problem2 = "3*4+2";
-    // let problem3 = "(4+3)*5-1";
-    // let problem4 = "3*4+2*6/2+2*9/2";
 }
